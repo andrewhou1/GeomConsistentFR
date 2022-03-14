@@ -3,8 +3,6 @@ Andrew Hou, Michel Sarkis, Ning Bi, Yiying Tong, Xiaoming Liu. In CVPR, 2022.
 
 ![alt text](https://github.com/andrewhou1/GeomConsistentFR/blob/main/Overview_Figure_CVPR2022.png)
 
-<iframe width="560" height="315" src="https://www.youtube.com/embed/fbP2i5ywZvw" title="YouTube video player" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
-
 The code for this project was developed using Python 3 and PyTorch 1.7.1. 
 
 ## Citation 
