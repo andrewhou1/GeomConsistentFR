@@ -1,6 +1,8 @@
 # Face Relighting with Geometrically Consistent Shadows
 Andrew Hou, Michel Sarkis, Ning Bi, Yiying Tong, Xiaoming Liu. In CVPR, 2022. 
 
+<object data="Overview_Figure_CVPR2022.pdf" width="1000" height="1000" type='application/pdf'/></object>
+
 The code for this project was developed using Python 3 and PyTorch 1.7.1. 
 
 ## Citation 
