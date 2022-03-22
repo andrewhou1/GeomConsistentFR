@@ -508,7 +508,7 @@ def main():
     model = model.cuda()
     model.eval()
     training_images = np.zeros((1, 256, 256, 3))
-    img_name = '00508.png'
+    img_name = '00295.png'
     training_images[0, :, :, :] = cv2.resize(imageio.imread('sample_test_images_FFHQ/'+img_name)/255.0, (256, 256))
     training_lightings = np.zeros((1, 4))
     training_lightings[0, 0] = 0.5
@@ -546,17 +546,17 @@ def main():
     training_lightings[0, 2] = 0.4925
     training_lightings[0, 3] = 0.7463'''
     #A00E45, top lighting, used to generate 00295.png
-    '''training_lightings[0, 1] = 0
+    training_lightings[0, 1] = 0
     training_lightings[0, 2] = 0.7071
-    training_lightings[0, 3] = 0.7071'''
+    training_lightings[0, 3] = 0.7071
     #A60E-20, bottom left
     '''training_lightings[0, 1] = -0.8138
     training_lightings[0, 2] = -0.3420
     training_lightings[0, 3] = 0.4698'''
     #A-60E-20, bottom right, used to generate 00508.png
-    training_lightings[0, 1] = 0.8138
+    '''training_lightings[0, 1] = 0.8138
     training_lightings[0, 2] = -0.3420
-    training_lightings[0, 3] = 0.4698
+    training_lightings[0, 3] = 0.4698'''
 
     training_masks = np.zeros((1, 256, 256, 1))
     training_masks[0, :, :, :] = np.reshape(imageio.imread('FFHQ_skin_masks/'+img_name), (256, 256, 1))
