@@ -7,6 +7,15 @@ Andrew Hou, Michel Sarkis, Ning Bi, Yiying Tong, Xiaoming Liu. In CVPR, 2022.
 
 The code for this project was developed using Python 3 and PyTorch 1.7.1. 
 
+## Training Data 
+The training data can be downloaded from: https://drive.google.com/file/d/1Jh4a5zvx92NRjC5E_MyaKMbFymx2Iw9E/view?usp=sharing 
+
+The original CelebAHQ dataset can be downloaded from: https://github.com/switchablenorms/CelebAMask-HQ
+
+These images will need to be cropped and will go into their own folder MP_data/CelebA-HQ_DFNRMVS_cropped/
+
+For the cropping code specifically, we will need to create a separate conda environment to ensure that the images are cropped consistently to match the rest of the training data (albedo, depth maps, etc.) Note that this conda environment is different from the conda environment we will use for training and testing. 
+
 ## Testing 
 To run our testing code, use the following command: "CUDA_VISIBLE_DEVICES=0 python test_relight_single_image.py"
 
