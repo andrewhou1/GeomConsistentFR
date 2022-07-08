@@ -36,9 +36,13 @@ pip install imageio
 ## Training 
 Once you've downloaded all of the training data from our google drive link (albedo, depth, etc.) and finished cropping the CelebAHQ images as described above, move the cropped CelebAHQ images from **output_image_dir/** to **MP_data/CelebA-HQ_DFNRMVS_cropped/**
 
-Make two additional directories to store the loss values and saved model weights: **losses_raytracing_relighting_CelebAHQ_DSSIM_8x/** and **saved_epochs_raytracing_relighting_CelebAHQ_DSSIM_8x/**
+To train the target lighting model, where the user can specify the desired lighting direction, make two additional directories to store the loss values and saved model weights: **losses_raytracing_relighting_CelebAHQ_DSSIM_8x/** and **saved_epochs_raytracing_relighting_CelebAHQ_DSSIM_8x/**
 
-Finally, you can train the model using the following command: **CUDA_VISIBLE_DEVICES=0 python train_raytracing_relighting_CelebAHQ_DSSIM_8x.py**
+Finally, you can train the target lighting model using the following command: **CUDA_VISIBLE_DEVICES=0 python train_raytracing_relighting_CelebAHQ_DSSIM_8x.py**
+
+If you instead would like to train the lighting transfer model, make the following two directories instead: **losses_lighting_transfer/** and **saved_epochs_lighting_transfer**
+
+To train the lighting transfer model, use the following command: **CUDA_VISIBLE_DEVICES=0 python train_lighting_transfer.py**
 
 Be sure to use the correct conda environment (GeomShadows) for training. 
 
