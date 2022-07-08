@@ -8,11 +8,37 @@ import cv2
 from kornia.geometry.depth import depth_to_normals
 import scipy.io
 import imageio
+import random
+from pytorch_msssim import ssim, ms_ssim, SSIM, MS_SSIM
+
+
+class PatchGAN(nn.Module):
+    def __init__(self):
+        super(PatchGAN, self).__init__()
+        self.conv1 = nn.Conv2d(3, 64, 4, stride=2, padding=(1, 1))
+        self.conv2 = nn.Conv2d(64, 128, 4, stride=2, padding=(1, 1))
+        self.conv3 = nn.Conv2d(128, 256, 4, stride=2, padding=(1, 1))
+        self.conv4 = nn.Conv2d(256, 512, 4, stride=2, padding=(1, 1))
+        self.conv5 = nn.Conv2d(512, 1, 4, stride=1, padding=(1, 1))
+
+        self.bn2 = nn.BatchNorm2d(128)
+        self.bn3 = nn.BatchNorm2d(256)
+        self.bn4 = nn.BatchNorm2d(512)
+
+    def forward(self, img):
+        conv1 = F.leaky_relu(self.conv1(img), 0.2)
+        conv2 = F.leaky_relu(self.bn2(self.conv2(conv1)), 0.2)
+        conv3 = F.leaky_relu(self.bn3(self.conv3(conv2)), 0.2)
+        conv4 = F.leaky_relu(self.bn4(self.conv4(conv3)), 0.2)
+        conv5 = self.conv5(conv4)
+
+        return conv5
+        
 
 class RelightNet(nn.Module):
     def __init__(self):
         super(RelightNet, self).__init__()
-        self.batch_size = 1
+        self.batch_size = 3
         self.img_height = 256
         self.img_width = 256
         self.lr = 0.0001
@@ -20,6 +46,7 @@ class RelightNet(nn.Module):
         self.directional_intensity = 0.5
         self.light_distance = 4013.0
         self.num_sample_points = 160
+        self.GD_ratio = 5
 
         xx, yy = np.meshgrid(range(self.img_width), range(self.img_height), indexing='xy')
         self.xx = nn.Parameter(torch.from_numpy(np.copy(xx)).unsqueeze(0).repeat([self.batch_size, 1, 1]).float(), requires_grad=False)-(self.img_width/2.0)
@@ -33,13 +60,13 @@ class RelightNet(nn.Module):
         self.conv_h1_2 = nn.Conv2d(16, 16, 3, padding=(1, 1))
         self.conv_h2_1 = nn.Conv2d(16, 32, 3, padding=(1, 1))
         self.conv_h2_2 = nn.Conv2d(32, 32, 3, padding=(1, 1))
-        self.conv_shortcut_h1_out = nn.Conv2d(16, 32, 3, padding=(1, 1))
+        self.conv_shortcut_h1_out = nn.Conv2d(16, 32, 1, bias=False)
         self.conv_h3_1 = nn.Conv2d(32, 64, 3, padding=(1, 1))
         self.conv_h3_2 = nn.Conv2d(64, 64, 3, padding=(1, 1))
-        self.conv_shortcut_h2_out = nn.Conv2d(32, 64, 3, padding=(1, 1))
+        self.conv_shortcut_h2_out = nn.Conv2d(32, 64, 1, bias=False)
         self.conv_h4_1 = nn.Conv2d(64, 155, 3, padding=(1, 1))
         self.conv_h4_2 = nn.Conv2d(155, 155, 3, padding=(1, 1))
-        self.conv_shortcut_h3_out = nn.Conv2d(64, 155, 3, padding=(1, 1))
+        self.conv_shortcut_h3_out = nn.Conv2d(64, 155, 1, bias=False)
 
         self.bn_c1_og = nn.BatchNorm2d(16)
         self.bn_h1_1 = nn.BatchNorm2d(16)
@@ -63,17 +90,17 @@ class RelightNet(nn.Module):
         #albedo decoder layers
         self.deconv_albedo_h5_1 = nn.ConvTranspose2d(128, 64, 3, padding=(1, 1))
         self.deconv_albedo_h5_2 = nn.ConvTranspose2d(64, 64, 3, padding=(1, 1))
-        self.deconv_albedo_shortcut_all_features = nn.ConvTranspose2d(128, 64, 3, padding=(1, 1))
+        self.deconv_albedo_shortcut_all_features = nn.ConvTranspose2d(128, 64, 1, bias=False)
         self.conv_albedo_skip_s1_1 = nn.Conv2d(64, 64, 3, padding=(1, 1))
         self.conv_albedo_skip_s1_2 = nn.Conv2d(64, 64, 3, padding=(1, 1))
         self.deconv_albedo_h6_1 = nn.ConvTranspose2d(64, 32, 3, padding=(1, 1))
         self.deconv_albedo_h6_2 = nn.ConvTranspose2d(32, 32, 3, padding=(1, 1))
-        self.deconv_albedo_shortcut_h5_out = nn.ConvTranspose2d(64, 32, 3, padding=(1, 1))
+        self.deconv_albedo_shortcut_h5_out = nn.ConvTranspose2d(64, 32, 1, bias=False)
         self.conv_albedo_skip_s2_1 = nn.Conv2d(32, 32, 3, padding=(1, 1))
         self.conv_albedo_skip_s2_2 = nn.Conv2d(32, 32, 3, padding=(1, 1))
         self.deconv_albedo_h7_1 = nn.ConvTranspose2d(32, 16, 3, padding=(1, 1))
         self.deconv_albedo_h7_2 = nn.ConvTranspose2d(16, 16, 3, padding=(1, 1))
-        self.deconv_albedo_shortcut_h6_out = nn.ConvTranspose2d(32, 16, 3, padding=(1, 1))
+        self.deconv_albedo_shortcut_h6_out = nn.ConvTranspose2d(32, 16, 1, bias=False)
         self.conv_albedo_skip_s3_1 = nn.Conv2d(16, 16, 3, padding=(1, 1))
         self.conv_albedo_skip_s3_2 = nn.Conv2d(16, 16, 3, padding=(1, 1))
         self.deconv_albedo_h8_1 = nn.ConvTranspose2d(16, 16, 3, padding=(1, 1))
@@ -116,17 +143,17 @@ class RelightNet(nn.Module):
         #depth decoder layers
         self.deconv_depth_h5_1 = nn.ConvTranspose2d(128, 64, 3, padding=(1, 1))
         self.deconv_depth_h5_2 = nn.ConvTranspose2d(64, 64, 3, padding=(1, 1))
-        self.deconv_depth_shortcut_all_features = nn.ConvTranspose2d(128, 64, 3, padding=(1, 1))
+        self.deconv_depth_shortcut_all_features = nn.ConvTranspose2d(128, 64, 1, bias=False)
         self.conv_depth_skip_s1_1 = nn.Conv2d(64, 64, 3, padding=(1, 1))
         self.conv_depth_skip_s1_2 = nn.Conv2d(64, 64, 3, padding=(1, 1))
         self.deconv_depth_h6_1 = nn.ConvTranspose2d(64, 32, 3, padding=(1, 1))
         self.deconv_depth_h6_2 = nn.ConvTranspose2d(32, 32, 3, padding=(1, 1))
-        self.deconv_depth_shortcut_h5_out = nn.ConvTranspose2d(64, 32, 3, padding=(1, 1))
+        self.deconv_depth_shortcut_h5_out = nn.ConvTranspose2d(64, 32, 1, bias=False)
         self.conv_depth_skip_s2_1 = nn.Conv2d(32, 32, 3, padding=(1, 1))
         self.conv_depth_skip_s2_2 = nn.Conv2d(32, 32, 3, padding=(1, 1))
         self.deconv_depth_h7_1 = nn.ConvTranspose2d(32, 16, 3, padding=(1, 1))
         self.deconv_depth_h7_2 = nn.ConvTranspose2d(16, 16, 3, padding=(1, 1))
-        self.deconv_depth_shortcut_h6_out = nn.ConvTranspose2d(32, 16, 3, padding=(1, 1))
+        self.deconv_depth_shortcut_h6_out = nn.ConvTranspose2d(32, 16, 1, bias=False)
         self.conv_depth_skip_s3_1 = nn.Conv2d(16, 16, 3, padding=(1, 1))
         self.conv_depth_skip_s3_2 = nn.Conv2d(16, 16, 3, padding=(1, 1))
         self.deconv_depth_h8_1 = nn.ConvTranspose2d(16, 16, 3, padding=(1, 1))
@@ -166,7 +193,7 @@ class RelightNet(nn.Module):
         self.upsample_depth_h7_out = nn.Upsample(scale_factor=2, mode='nearest')
         self.upsample_depth_h8_out = nn.Upsample(scale_factor=2, mode='nearest')
 
-    def forward(self, img, epoch, intrinsic_matrix, mask, target_lighting, target_ambient_values, batch_mask):
+    def forward(self, img, epoch, intrinsic_matrix, masks):
         img = img.permute(0, 3, 1, 2)
   
         #encoder
@@ -327,9 +354,11 @@ class RelightNet(nn.Module):
         surface_normals[:, 1, :, :] = -surface_normals[:, 1, :, :]
 
         points_3D = torch.cat((torch.reshape(self.xx, (self.batch_size, 1, self.img_height, self.img_width)), torch.reshape(self.yy, (self.batch_size, 1, self.img_height, self.img_width)), c2_o_depth), 1)
-
-        #(batch_size, 3, 1, 1)
-        incident_light = target_lighting
+        tmp_incident_light = SL_lin2[:, :, :, 1:4].permute(0, 3, 1, 2)
+        
+        tmp_incident_light_z = torch.maximum(tmp_incident_light[:, 2], torch.tensor([[[0.0]], [[0.0]], [[0.0]]]).cuda())
+        
+        incident_light = torch.cat((tmp_incident_light[:, 0:2], torch.reshape(tmp_incident_light_z, (3, 1, 1, 1))), 1)
         incident_light = F.normalize(incident_light, p=2, dim=1)
         unit_light_direction = incident_light
         incident_light = self.light_distance*incident_light.repeat(1, 1, self.img_height, self.img_width)
@@ -337,12 +366,8 @@ class RelightNet(nn.Module):
         incident_light = F.normalize(incident_light-points_3D, p=2, dim=1)
         surface_normals = F.normalize(surface_normals, p=2, dim=1)
         directional_component = self.directional_intensity*torch.maximum(torch.sum(surface_normals*incident_light, dim=1), torch.tensor([0.0]).cuda())
-      
-        #For qualitative results feel free to tune the ambient intensity to produce the best results. This will mostly affect the shadow intensity and is flexible since the user can specify their desired target lighting.
-        ambient_light = SL_lin2[:, :, :, 0]-0.1
-   
-        ambient_values = ambient_light
-        ambient_light = ambient_light.repeat(1, self.img_height, self.img_width)
+        ambient_values = SL_lin2[:, :, :, 0]
+        ambient_light = ambient_values.repeat(1, self.img_height, self.img_width)
         full_shading = ambient_light+directional_component
 
         min_distance = torch.autograd.Variable(torch.empty((self.batch_size, self.img_height, self.img_width)), requires_grad=True)
@@ -359,7 +384,7 @@ class RelightNet(nn.Module):
 
             #initialization
             end_points = starting_points_xy
-     
+
             if(light_x < -(self.img_width/2.0)):
                 if(light_y < (1-(self.img_height/2.0))):
                     #try x=-(self.img_width/2.0)
@@ -469,7 +494,7 @@ class RelightNet(nn.Module):
             sampled_depths_interpolated_x_upper = sampled_depths_upper_left*(sampled_indices_ceiled[:, 0]-sampled_indices_unrounded[:, 0])+sampled_depths_upper_right*(sampled_indices_unrounded[:, 0]-sampled_indices_floored[:, 0])
             sampled_depths_interpolated_x_lower = sampled_depths_lower_left*(sampled_indices_ceiled[:, 0]-sampled_indices_unrounded[:, 0])+sampled_depths_lower_right*(sampled_indices_unrounded[:, 0]-sampled_indices_floored[:, 0])
             sampled_depths_interpolated = sampled_depths_interpolated_x_upper*(sampled_indices_ceiled[:, 1]-sampled_indices_unrounded[:, 1])+sampled_depths_interpolated_x_lower*(sampled_indices_unrounded[:, 1]-sampled_indices_floored[:, 1])
-          
+
             sampled_indices_unrounded = sampled_indices_unrounded.permute(1, 0)
             sampled_indices_unrounded[0, :] -= (self.img_width/2.0)
             sampled_indices_unrounded[1, :] = (self.img_height/2.0)-sampled_indices_unrounded[1, :]
@@ -482,89 +507,72 @@ class RelightNet(nn.Module):
             points_C = points_C.repeat(1, self.num_sample_points, 1, 1)
             BC = points_C-points_B
             cross_product = torch.cross(BA, BC, dim=0)
-            numerator = torch.sqrt(torch.sum(cross_product*cross_product, dim=0)+0.0001)
-            denominator = torch.sqrt(torch.sum(BC*BC, dim=0)+0.0001)
-            point_to_line_distances = numerator/denominator
-            outside_of_face = (mask[sampled_indices[:, 1].long(), sampled_indices[:, 0].long()] == 0)
+            point_to_line_distances = (torch.sqrt(torch.sum(cross_product*cross_product, dim=0)+0.0001))/(torch.sqrt(torch.sum(BC*BC, dim=0)+0.0001))
+            outside_of_face = (masks[i, sampled_indices[:, 1].long(), sampled_indices[:, 0].long()] == 0)
             point_to_line_distances = torch.reshape(point_to_line_distances, (self.num_sample_points*self.img_height*self.img_width, 1))
             point_to_line_distances = torch.logical_not(outside_of_face)*point_to_line_distances+outside_of_face*1000000.0
             point_to_line_distances = torch.reshape(point_to_line_distances, (self.num_sample_points, self.img_height, self.img_width))
             (values, idx) = torch.min(point_to_line_distances, dim=0)
+        
             minimum_distance[i, :, :] = values
 
-            if(light_x >= -(self.img_width/2.0) and light_x <= (self.img_width-self.img_width/2.0-1) and light_y >= (1-(self.img_height/2.0)) and light_y <= self.img_height/2.0):
-                minimum_distance[i, :, :] = minimum_distance[i, :, :]+5.0
-
+        print(torch.min(minimum_distance))
+        print(torch.max(minimum_distance))
         shadow_mask_weights = -4*torch.exp(-minimum_distance)/torch.pow((1+torch.exp(-minimum_distance)), 2)+1
         final_shading = shadow_mask_weights.cuda()*full_shading+(1-shadow_mask_weights.cuda())*ambient_light
         rendered_images = c2_o_albedo.clone()
         rendered_images[:, 0, :, :] = rendered_images[:, 0, :, :].clone()*final_shading
         rendered_images[:, 1, :, :] = rendered_images[:, 1, :, :].clone()*final_shading
         rendered_images[:, 2, :, :] = rendered_images[:, 2, :, :].clone()*final_shading
+        print(torch.sum(rendered_images-c2_o_albedo))
 
-        return c2_o_albedo, c2_o_depth, shadow_mask_weights, ambient_light, full_shading, rendered_images, unit_light_direction, ambient_values, final_shading, surface_normals
+        return c2_o_albedo, c2_o_depth, shadow_mask_weights, ambient_light, full_shading, rendered_images, unit_light_direction, ambient_values
+            
+
+def load_data():
+    training_images = np.zeros((29890, 256, 256, 3))
+    training_lightings = np.zeros((29890, 4))
+    training_depths = np.zeros((29890, 256, 256, 1))
+    training_masks = np.zeros((29890, 256, 256, 1))
+    training_albedo = np.zeros((29890, 256, 256))     
+    training_masks_fill_nose_and_mouth = np.zeros((29890, 256, 256, 1)) 
+
+    images = sorted(os.listdir('MP_data/CelebA-HQ_DFNRMVS_cropped/'))
+    lightings = sorted(os.listdir('MP_data/lighting_directions_CelebAHQ_DFNRMVS/'))
+    depths = sorted(os.listdir('MP_data/depth_maps_CelebA-HQ/'))
+    masks = sorted(os.listdir('MP_data/depth_masks_CelebA-HQ_DFNRMVS/'))
+    albedo = sorted(os.listdir('MP_data/CelebA-HQ_albedo_grayscale/'))
+
+    #ambient estimation from shadow masks
+    training_lightings[:, 0] = 0.5
+
+    for i in range(len(depths)):
+        print(i)
+        training_depths[i, :, :, :] = np.reshape(scipy.io.loadmat('MP_data/depth_maps_CelebA-HQ/'+depths[i])['depth_img'], (256, 256, 1))
+        training_masks[i, :, :, :] = np.reshape(imageio.imread('MP_data/depth_masks_CelebA-HQ_DFNRMVS/'+masks[i]), (256, 256, 1))
+
+        name_parts = depths[i].split('_')
+        training_lightings[i, 1:4] = scipy.io.loadmat('MP_data/lighting_directions_CelebAHQ_DFNRMVS/'+name_parts[0]+'.jpg.mat')['lighting_direction']
+        training_images[i, :, :, :] = imageio.imread('MP_data/CelebA-HQ_DFNRMVS_cropped/'+name_parts[0]+'.jpg')/255.0
+        training_albedo[i, :, :] = imageio.imread('MP_data/CelebA-HQ_albedo_grayscale/'+name_parts[0]+'.jpg')
+        tmp = np.reshape(imageio.imread('MP_data/CelebAHQ_face_masks/'+name_parts[0]+'.jpg'), (256, 256, 1))
+        tmp = np.maximum(tmp, training_masks[i, :, :, :])
+        tmp[tmp > 128] = 255.0
+        tmp[tmp <= 128] = 0.0
+        training_masks_fill_nose_and_mouth[i, :, :, :] = tmp
+        
+    return training_images, training_lightings, training_depths, training_masks, training_albedo, training_masks_fill_nose_and_mouth
 
 def main():
     model = RelightNet()
-    model.load_state_dict(torch.load('model/model_epoch99.pth'))
     model = model.float()
     model = model.cuda()
-    model.eval()
-    training_images = np.zeros((1, 256, 256, 3))
-    img_name = '00295.png'
-    training_images[0, :, :, :] = cv2.resize(imageio.imread('sample_test_images_FFHQ/'+img_name)/255.0, (256, 256))
-    training_lightings = np.zeros((1, 4))
-    training_lightings[0, 0] = 0.5
-   
-    #Multi-PIE lighting 4, used to generate 00110.png, 00300.png, 00525.png 
-    '''training_lightings[0, 1] = 0.7518
-    training_lightings[0, 2] = 0.0
-    training_lightings[0, 3] = 0.6594'''
-    #Multi-PIE lighting 14, used to generate 00104.png
-    '''training_lightings[0, 1] = 0.6893
-    training_lightings[0, 2] = 0.3991
-    training_lightings[0, 3] = 0.6047'''
-    #Multi-PIE lighting 5
-    '''training_lightings[0, 1] = 0.5145
-    training_lightings[0, 2] = 0.0
-    training_lightings[0, 3] = 0.8575'''
-    #Multi-PIE lighting 9, used to generate 00290.png
-    '''training_lightings[0, 1] = -0.5843
-    training_lightings[0, 2] = 0.0
-    training_lightings[0, 3] = 0.8115'''
-    #Multi-PIE lighting 10, used to generate 00322.png, 00572.png
-    '''training_lightings[0, 1] = -0.7574
-    training_lightings[0, 2] = 0
-    training_lightings[0, 3] = 0.6529'''
-    #Multi-PIE lighting 18
-    '''training_lightings[0, 1] = -0.7076
-    training_lightings[0, 2] = 0.3892
-    training_lightings[0, 3] = 0.5897'''
-    #Multi-PIE lighting 17, used to generate 00695.png
-    '''training_lightings[0, 1] = -0.5151
-    training_lightings[0, 2] = 0.4722
-    training_lightings[0, 3] = 0.7154'''
-    #Multi-PIE lighting 15
-    '''training_lightings[0, 1] = 0.4478
-    training_lightings[0, 2] = 0.4925
-    training_lightings[0, 3] = 0.7463'''
-    #A00E45, top lighting, used to generate 00295.png
-    training_lightings[0, 1] = 0
-    training_lightings[0, 2] = 0.7071
-    training_lightings[0, 3] = 0.7071
-    #A60E-20, bottom left
-    '''training_lightings[0, 1] = -0.8138
-    training_lightings[0, 2] = -0.3420
-    training_lightings[0, 3] = 0.4698'''
-    #A-60E-20, bottom right, used to generate 00508.png
-    '''training_lightings[0, 1] = 0.8138
-    training_lightings[0, 2] = -0.3420
-    training_lightings[0, 3] = 0.4698'''
-
-    training_masks = np.zeros((1, 256, 256, 1))
-    training_masks[0, :, :, :] = np.reshape(imageio.imread('FFHQ_skin_masks/'+img_name), (256, 256, 1))
-    training_masks_fill_nose = np.zeros((1, 256, 256, 1))
-    training_masks_fill_nose[0, :, :, :] = np.reshape(imageio.imread('FFHQ_skin_masks/'+img_name), (256, 256, 1))
+    print(model)
+    patchgan = PatchGAN()
+    patchgan = patchgan.float()
+    patchgan = patchgan.cuda()
+    print(patchgan)
+    (training_images, training_lightings, training_depths, training_masks, training_albedo, training_masks_fill_nose_and_mouth) = load_data()
     epoch = 200
     intrinsic_matrix = np.zeros((1, 3, 3))
     intrinsic_matrix[:, 0, 0] = 1570.0
@@ -573,51 +581,116 @@ def main():
     intrinsic_matrix[:, 0, 2] = model.img_width/2.0
     intrinsic_matrix[:, 1, 2] = model.img_height/2.0
     intrinsic_matrix = torch.from_numpy(intrinsic_matrix)
-    batch_list = np.arange(1)
-    num_batches = 1
+    batch_list = np.arange(int(29890/model.batch_size))
+    max_epoch = 1000
+    num_batches = 700
 
     L1_loss = nn.L1Loss()
     L1_loss_sum = nn.L1Loss(reduction='sum')
+    L2_loss_sum = nn.MSELoss(reduction='sum')
+    BCE_loss = torch.nn.BCEWithLogitsLoss()
+    fake_labels = torch.zeros([model.batch_size, 1, 15, 15], dtype=torch.float32)
+    real_labels = torch.ones([model.batch_size, 1, 15, 15], dtype=torch.float32)
 
-    with torch.no_grad():
-        for j in range(num_batches):
+    optimizer = torch.optim.Adam(model.parameters(), lr = model.lr)
+    optimizer_patchgan = torch.optim.Adam(patchgan.parameters(), lr=model.lr)
+
+    for i in range(max_epoch):
+        np.random.shuffle(batch_list)
+        total_loss_epoch = 0.0
+        reconstruction_loss_epoch = 0.0
+        depth_loss_epoch = 0.0
+        ambient_loss_epoch = 0.0
+        dir_lighting_loss_epoch = 0.0
+        albedo_loss_epoch = 0.0
+        g_loss_epoch = 0.0
+        d_loss_epoch = 0.0
+        d_loss_real_epoch = 0.0
+        d_loss_fake_epoch = 0.0
+        DSSIM_loss_epoch = 0.0
+        
+        for j in range(700):
             curr_input_images = torch.from_numpy(training_images[(batch_list[j]*model.batch_size):((batch_list[j]+1)*model.batch_size)]) 
             curr_training_lightings = torch.from_numpy(training_lightings[(batch_list[j]*model.batch_size):((batch_list[j]+1)*model.batch_size)])
-            curr_mask = torch.from_numpy(training_masks[batch_list[j]])/255.0
-            batch_mask = curr_mask.repeat(model.batch_size, 1, 1, 1)
-            albedo, depth, shadow_mask_weights, ambient_light, full_shading, rendered_images, unit_light_direction, ambient_values, final_shading, surface_normals = model(curr_input_images.float().cuda(), epoch, intrinsic_matrix.cuda(), curr_mask.cuda(), torch.reshape(curr_training_lightings[:, 1:4].float().cuda(), (model.batch_size, 3, 1, 1)), torch.reshape(curr_training_lightings[:, 0].float().cuda(), (model.batch_size, 1, 1)), batch_mask.cuda())
-            
-            rendered_images = rendered_images.permute(0, 2, 3, 1)
-            rendered_images = rendered_images.cpu().numpy()
-            albedo = albedo.permute(0, 2, 3, 1)
-            albedo = albedo.cpu().numpy()
-            depth = depth.permute(0, 2, 3, 1)
-            depth = depth.cpu().numpy()
-            depth = -depth
-            depth = (depth-np.amin(depth))/(np.amax(depth)-np.amin(depth))
-            final_shading = final_shading.cpu().numpy()
-            surface_normals = surface_normals.permute(0, 2, 3, 1)
-            surface_normals = surface_normals.cpu().numpy()
-            surface_normals = 255.0*(surface_normals+1.0)/2.0
+            curr_depth_maps = torch.from_numpy(training_depths[(batch_list[j]*model.batch_size):((batch_list[j]+1)*model.batch_size)])
+            curr_masks = torch.from_numpy(training_masks[(batch_list[j]*model.batch_size):((batch_list[j]+1)*model.batch_size)])/255.0
 
-            curr_mask_3_channels = np.zeros((model.img_height, model.img_width, 3))
-            curr_mask_3_channels[:, :, 0] = np.reshape(curr_mask.numpy(), (model.img_height, model.img_width))
-            curr_mask_3_channels[:, :, 1] = np.reshape(curr_mask.numpy(), (model.img_height, model.img_width))
-            curr_mask_3_channels[:, :, 2] = np.reshape(curr_mask.numpy(), (model.img_height, model.img_width))
+            curr_masks_fill_nose_and_mouth = torch.from_numpy(training_masks_fill_nose_and_mouth[(batch_list[j]*model.batch_size):((batch_list[j]+1)*model.batch_size)])/255.0
+            curr_masks_3_channels_fill_nose_and_mouth = curr_masks_fill_nose_and_mouth.permute(0, 3, 1, 2).repeat(1, 3, 1, 1)
 
-            curr_mask_fill_nose = torch.from_numpy(training_masks_fill_nose[batch_list[j]])/255.0
-            curr_mask_fill_nose_3_channels = np.zeros((model.img_height, model.img_width, 3))
-            curr_mask_fill_nose_3_channels[:, :, 0] = np.reshape(curr_mask_fill_nose.numpy(), (model.img_height, model.img_width))
-            curr_mask_fill_nose_3_channels[:, :, 1] = np.reshape(curr_mask_fill_nose.numpy(), (model.img_height, model.img_width))
-            curr_mask_fill_nose_3_channels[:, :, 2] = np.reshape(curr_mask_fill_nose.numpy(), (model.img_height, model.img_width))
+            curr_albedo = torch.from_numpy(training_albedo[(batch_list[j]*model.batch_size):((batch_list[j]+1)*model.batch_size)])/255.0
 
-            for k in range(model.batch_size):
-                name_parts = img_name.split('.')
-                input_image = training_images[batch_list[j]*model.batch_size+k]*255.0
-                input_image = input_image[:, :, ::-1]
-                rendered_image = 255.0*rendered_images[k, :, :, ::-1]*curr_mask_fill_nose_3_channels
-                input_image[curr_mask_fill_nose_3_channels > 0] = rendered_image[curr_mask_fill_nose_3_channels > 0]
-                cv2.imwrite('FFHQ_relighting_results/'+name_parts[0]+'_rendered_image.png', input_image)
+            optimizer_patchgan.zero_grad()
+            albedo, depth, shadow_mask_weights, ambient_light, full_shading, rendered_images, unit_light_direction, ambient_values = model(curr_input_images.float().cuda(), i, intrinsic_matrix.cuda(), curr_masks_fill_nose_and_mouth.cuda())
+            logits_fake = patchgan(rendered_images*curr_masks_3_channels_fill_nose_and_mouth.float().cuda()+(1.0-curr_masks_3_channels_fill_nose_and_mouth.float().cuda())*curr_input_images.permute(0, 3, 1, 2).float().cuda())
+            logits_real = patchgan(curr_input_images.permute(0, 3, 1, 2).float().cuda())
+            d_loss_fake = 0.01*BCE_loss(logits_fake, fake_labels.cuda())
+            d_loss_real = 0.01*BCE_loss(logits_real, real_labels.cuda())
+            d_loss = d_loss_fake+d_loss_real
+            if(j % model.GD_ratio == 0): 
+                d_loss.backward(retain_graph=True)
+                optimizer_patchgan.step()
+            d_loss_epoch += d_loss.item()
+            d_loss_real_epoch += d_loss_real.item()
+            d_loss_fake_epoch += d_loss_fake.item()
+
+            optimizer.zero_grad()
+        
+            print(albedo.size())
+    
+            reconstruction_loss = 20.0*L2_loss_sum(rendered_images*curr_masks_3_channels_fill_nose_and_mouth.cuda(), curr_input_images.permute(0, 3, 1, 2).float().cuda()*curr_masks_3_channels_fill_nose_and_mouth.cuda())/torch.sum(curr_masks_3_channels_fill_nose_and_mouth.cuda())
+            depth_loss = L1_loss_sum(depth.permute(0, 2, 3, 1)*curr_masks.cuda(), curr_depth_maps.cuda()*curr_masks.cuda())/torch.sum(curr_masks.cuda())
+            ambient_loss = 2.5*L1_loss(ambient_values, torch.reshape(curr_training_lightings[:, 0].cuda(), (model.batch_size, 1, 1)))
+            dir_lighting_loss = torch.sum(1-torch.sum(unit_light_direction*torch.reshape(curr_training_lightings[:, 1:4].cuda(), (model.batch_size, 3, 1, 1)), dim=1))/model.batch_size
+            grayscale_albedo = torch.mean(albedo, 1)
+            print(grayscale_albedo.size())
+            albedo_loss = 5.0*L1_loss_sum(torch.reshape(grayscale_albedo, (model.batch_size, model.img_height, model.img_width, 1))*curr_masks_fill_nose_and_mouth.cuda(), torch.reshape(curr_albedo, (model.batch_size, model.img_height, model.img_width, 1)).cuda()*curr_masks_fill_nose_and_mouth.cuda())/torch.sum(curr_masks_fill_nose_and_mouth.cuda())
+
+            logits_fake = patchgan(rendered_images*curr_masks_3_channels_fill_nose_and_mouth.float().cuda()+(1.0-curr_masks_3_channels_fill_nose_and_mouth.float().cuda())*curr_input_images.permute(0, 3, 1, 2).float().cuda())
+            g_loss = 0.01*BCE_loss(logits_fake, real_labels.cuda())
+            DSSIM_loss = 8.0*(1 - ssim(rendered_images*curr_masks_3_channels_fill_nose_and_mouth.float().cuda()+(1.0-curr_masks_3_channels_fill_nose_and_mouth.float().cuda())*curr_input_images.permute(0, 3, 1, 2).float().cuda(), curr_input_images.permute(0, 3, 1, 2).float().cuda(), data_range=1.0, size_average=True, nonnegative_ssim=True))/2.0
+
+            total_loss = reconstruction_loss+depth_loss+ambient_loss+dir_lighting_loss+albedo_loss+g_loss+DSSIM_loss
+     
+            total_loss_epoch += total_loss.item()
+            reconstruction_loss_epoch += reconstruction_loss.item()
+            depth_loss_epoch += depth_loss.item()
+            ambient_loss_epoch += ambient_loss.item()
+            dir_lighting_loss_epoch += dir_lighting_loss.item()
+            albedo_loss_epoch += albedo_loss.item()
+            g_loss_epoch += g_loss.item()
+            DSSIM_loss_epoch += DSSIM_loss.item()
+            total_loss.backward()
+            optimizer.step()
+            print("Epoch: "+str(i)+", Batch: "+str(j))
+            print("Total loss: "+str(total_loss.item()))
+            print("Reconstruction loss: "+str(reconstruction_loss.item()))
+            print("Depth loss: "+str(depth_loss.item()))
+            print("Ambient loss: "+str(ambient_loss.item()))
+            print("Lighting loss: "+str(dir_lighting_loss.item()))
+            print("Albedo loss: "+str(albedo_loss.item()))
+            print("Generator loss: "+str(g_loss.item()))
+            print("Discriminator loss: "+str(d_loss.item()))
+            print("Discriminator Real loss: "+str(d_loss_real.item()))
+            print("Discriminator Fake loss: "+str(d_loss_fake.item()))
+            print("DSSIM loss: "+str(DSSIM_loss.item()))
+            print("\n")
+
+        losses = {} 
+        losses['total'] = total_loss_epoch/num_batches
+        losses['recon'] = reconstruction_loss_epoch/num_batches
+        losses['depth'] = depth_loss_epoch/num_batches
+        losses['ambient'] = ambient_loss_epoch/num_batches
+        losses['lighting'] = dir_lighting_loss_epoch/num_batches
+        losses['albedo'] = albedo_loss_epoch/num_batches
+        losses['generator'] = g_loss_epoch/num_batches
+        losses['discriminator'] = d_loss_epoch/num_batches
+        losses['discriminator_real'] = d_loss_real_epoch/num_batches
+        losses['discriminator_fake'] = d_loss_fake_epoch/num_batches
+        losses['DSSIM'] = DSSIM_loss_epoch/num_batches
+        scipy.io.savemat('losses_lighting_transfer/losses_epoch'+str(i)+'.mat', losses)
+        torch.save(model.state_dict(), 'saved_epochs_lighting_transfer/model_epoch'+str(i)+'.pth')
+        torch.save(patchgan.state_dict(), 'saved_epochs_lighting_transfer/patchgan_epoch'+str(i)+'.pth')
             
 if __name__ == '__main__':
     main()
