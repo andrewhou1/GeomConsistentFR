@@ -40,7 +40,7 @@ To train the target lighting model, where the user can specify the desired light
 
 Finally, you can train the target lighting model using the following command: **CUDA_VISIBLE_DEVICES=0 python train_raytracing_relighting_CelebAHQ_DSSIM_8x.py**
 
-If you instead would like to train the lighting transfer model, make the following two directories instead: **losses_lighting_transfer/** and **saved_epochs_lighting_transfer**
+If you instead would like to train the lighting transfer model, make the following two directories instead: **losses_lighting_transfer/** and **saved_epochs_lighting_transfer/**
 
 To train the lighting transfer model, use the following command: **CUDA_VISIBLE_DEVICES=0 python train_lighting_transfer.py**
 
