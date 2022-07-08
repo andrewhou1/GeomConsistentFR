@@ -49,7 +49,7 @@ You can specify both an input image and a target lighting direction within the c
 
 Once a relit image is generated, use our **fix_border_artifacts_CVPR2022.m** postprocessing code to improve the face boundary if there are any dark or black pixels that appear along the boundary. This can sometimes happen as our method relights the face region only, and the boundary between the relit face and the original image may need to be smoothed. 
 
-To run our testing code for lighting transfer, use the following command **CUDA_VISIBLE_DEVICES=0 python test_relight_single_image_lighting_transfer.py input_image reference_image face_mask**
+To run our testing code for lighting transfer, first make a directory called **lighting_transfer_results/** and then use the following command: **CUDA_VISIBLE_DEVICES=0 python test_relight_single_image_lighting_transfer.py input_image reference_image face_mask**
 
 Be sure to use the correct conda environment (GeomShadows) for testing. 
 
