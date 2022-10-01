@@ -1,5 +1,5 @@
 # Face Relighting with Geometrically Consistent Shadows
-[Andrew Hou](https://andrewhou1.github.io/), Michel Sarkis, [Ning Bi](https://www.linkedin.com/in/ning-bi-74688817/), [Yiying Tong](https://www.cse.msu.edu/~ytong/), [Xiaoming Liu](http://www.cse.msu.edu/~liuxm/index2.html). In CVPR, 2022. 
+[Andrew Hou](https://andrewhou1.github.io/), [Michel Sarkis](https://www.linkedin.com/in/michelsarkis/), [Ning Bi](https://www.linkedin.com/in/ning-bi-74688817/), [Yiying Tong](https://www.cse.msu.edu/~ytong/), [Xiaoming Liu](http://www.cse.msu.edu/~liuxm/index2.html). In CVPR, 2022. 
 
 ![alt text](https://github.com/andrewhou1/GeomConsistentFR/blob/main/Overview_Figure1_CVPR2022.png)
 
