@@ -8,7 +8,7 @@
 The code for this project was developed using Python 3.8.8 and PyTorch 1.7.1. 
 
 ## Training Data 
-The training data can be downloaded from: https://drive.google.com/file/d/1Jh4a5zvx92NRjC5E_MyaKMbFymx2Iw9E/view?usp=sharing 
+The training data can be downloaded from: https://drive.google.com/file/d/1Jh4a5zvx92NRjC5E_MyaKMbFymx2Iw9E/view?usp=sharing ](https://drive.google.com/file/d/1FPEicqfKNTekCquOLxrfQaMeV6z9SHjf/view?usp=drive_link
 
 The original CelebAHQ dataset can be downloaded from: https://github.com/switchablenorms/CelebAMask-HQ
 
